@@ -25,11 +25,12 @@ def generate_digital_content():
     오늘 날짜({today_str}) 기준 업무 및 실생활에 바로 유용한 'AI 활용 프롬프트 3선 및 활용 가이드' 전자책 콘텐츠를 작성해 주세요.
 
     반드시 아래 구분 기호 형식에 맞춰 출력하세요:
-    [TITLE]: 상품 제목 (예: [2026-08-25] 업무 생산성을 10배 올리는 AI 프롬프트 3선)
+    [TITLE]: 상품 제목 (예: [{today_str}] 업무 생산성을 10배 올리는 AI 프롬프트 3선)
     [DESCRIPTION]: 상품 상세 내용 및 프롬프트 본문 전체
     """
 
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_KEY}"
+    # 최신 gemini-2.0-flash 모델 적용
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={GEMINI_KEY}"
     headers = {"Content-Type": "application/json"}
     payload = {
         "contents": [{"parts": [{"text": prompt}]}]
