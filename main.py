@@ -70,6 +70,25 @@ def create_pdf_guide(filename, title, category_info, content):
     c.drawText(text_object)
     c.save()
 
+def get_candidate_models():
+    """Gemini 사용 가능한 최신 모델 검색"""
+    models = ["gemini-2.5-flash", "gemini-3.6-flash"]
+    try:
+        url = f"https://generativelanguage.googleapis.com/v1beta/models?key={GEMINI_KEY}"
+        res = requests.get(url, timeout=5)
+        if res.status_code == 200:
+            fetched = [
+                m.get("name", "").replace("models/", "")
+                for m in res.json().get("models", [])
+                if "generateContent" in m.get("supportedGenerationMethods", [])
+            ]
+            for m in reversed(fetched):
+                if m not in models:
+                    models.insert(0, m)
+    except Exception as e:
+        print(f"Model lookup note: {e}")
+    return models
+
 def generate_english_product():
     selected = random.choice(PRODUCT_CATALOG)
     prompt = f"""
@@ -90,12 +109,14 @@ def generate_english_product():
     [GUIDE]: English PDF Guide Text
     """
 
-    candidate_models = ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-2.0-flash"]
+    candidate_models = get_candidate_models()
     payload = {"contents": [{"parts": [{"text": prompt}]}]}
     headers = {"Content-Type": "application/json"}
+    last_error = ""
 
     for model in candidate_models:
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={GEMINI_KEY}"
+        print(f"Trying Gemini model: {model}")
         res = requests.post(url, json=payload, headers=headers, timeout=15)
         if res.status_code == 200:
             text = res.json()["candidates"][0]["content"]["parts"][0]["text"]
@@ -111,8 +132,10 @@ def generate_english_product():
                 guide = sub_parts[1].strip()
 
             return selected, title, desc, guide
+        else:
+            last_error = f"{model} ({res.status_code}): {res.text}"
 
-    raise Exception("Gemini API content generation failed.")
+    raise Exception(f"Gemini API content generation failed. Details: {last_error}")
 
 def create_gumroad_product(title, description, price, pdf_path):
     url = "https://api.gumroad.com/v2/products"
@@ -153,7 +176,7 @@ def main():
         error_msg = f"⚠️ [Auto-Seller Error]: {e}"
         print(error_msg)
         send_telegram(error_msg)
-        sys.exit(1) # GitHub Actions에서 실제 실패를 명확히 판정하도록 처리
+        sys.exit(1)
     finally:
         if os.path.exists(pdf_file):
             os.remove(pdf_file)
