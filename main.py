@@ -17,28 +17,8 @@ def send_telegram(message):
         except Exception as e:
             print(f"텔레그램 전송 실패: {e}")
 
-def get_available_gemini_model():
-    """사용 가능한 Gemini 모델 자동 감지"""
-    url = f"https://generativelanguage.googleapis.com/v1beta/models?key={GEMINI_KEY}"
-    res = requests.get(url)
-    if res.status_code == 200:
-        models = res.json().get("models", [])
-        # generateContent를 지원하는 flash 계열 모델 우선 찾기
-        for m in models:
-            methods = m.get("supportedGenerationMethods", [])
-            name = m.get("name", "")
-            if "generateContent" in methods and "flash" in name:
-                return name.replace("models/", "")
-        # flash가 없으면 generateContent가 가능한 아무 gemini 모델 선택
-        for m in models:
-            methods = m.get("supportedGenerationMethods", [])
-            name = m.get("name", "")
-            if "generateContent" in methods and "gemini" in name:
-                return name.replace("models/", "")
-    return "gemini-1.5-flash"  # 기본 예비값
-
 def generate_digital_content():
-    """Gemini API로 디지털 상품 내용 생성"""
+    """Gemini API로 디지털 상품 내용 생성 (자동 Fallback 재시도 지원)"""
     today_str = datetime.datetime.now().strftime("%Y-%m-%d")
     prompt = f"""
     당신은 인기 있는 디지털 정보성 전자책 작가입니다.
@@ -49,31 +29,58 @@ def generate_digital_content():
     [DESCRIPTION]: 상품 상세 내용 및 프롬프트 본문 전체
     """
 
-    # 사용 가능한 모델 자동 가져오기
-    model_name = get_available_gemini_model()
-    print(f"선택된 Gemini 모델: {model_name}")
+    # 우선 시도할 대표 모델 후보군
+    candidate_models = [
+        "gemini-1.5-flash",
+        "gemini-2.0-flash",
+        "gemini-2.5-flash",
+        "gemini-1.5-pro"
+    ]
 
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={GEMINI_KEY}"
+    # API에서 추가 가능한 모델 목록 가져와 최우선 순위로 배치
+    try:
+        list_url = f"https://generativelanguage.googleapis.com/v1beta/models?key={GEMINI_KEY}"
+        res = requests.get(list_url)
+        if res.status_code == 200:
+            fetched = [
+                m.get("name", "").replace("models/", "")
+                for m in res.json().get("models", [])
+                if "generateContent" in m.get("supportedGenerationMethods", [])
+            ]
+            for fm in reversed(fetched):
+                if fm not in candidate_models:
+                    candidate_models.insert(0, fm)
+    except Exception as e:
+        print(f"모델 목록 조회 참고: {e}")
+
+    payload = {"contents": [{"parts": [{"text": prompt}]}]}
     headers = {"Content-Type": "application/json"}
-    payload = {
-        "contents": [{"parts": [{"text": prompt}]}]
-    }
+    last_error = ""
 
-    res = requests.post(url, json=payload, headers=headers)
-    if res.status_code == 200:
-        result_text = res.json()["candidates"][0]["content"]["parts"][0]["text"]
+    # 후보 모델들을 순서대로 호출 (200 OK 응답이 나오는 첫 모델 사용)
+    for model in candidate_models:
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={GEMINI_KEY}"
+        print(f"Gemini 모델 시도 중: {model}")
+        res = requests.post(url, json=payload, headers=headers)
         
-        title = f"AI 프롬프트 모음집 ({today_str})"
-        description = result_text
+        if res.status_code == 200:
+            print(f"✅ 사용 가능한 모델 확인: {model}")
+            result_text = res.json()["candidates"][0]["content"]["parts"][0]["text"]
+            
+            title = f"AI 프롬프트 모음집 ({today_str})"
+            description = result_text
 
-        if "[TITLE]:" in result_text and "[DESCRIPTION]:" in result_text:
-            parts = result_text.split("[DESCRIPTION]:")
-            title = parts[0].replace("[TITLE]:", "").strip()
-            description = parts[1].strip()
+            if "[TITLE]:" in result_text and "[DESCRIPTION]:" in result_text:
+                parts = result_text.split("[DESCRIPTION]:")
+                title = parts[0].replace("[TITLE]:", "").strip()
+                description = parts[1].strip()
 
-        return title, description
-    else:
-        raise Exception(f"Gemini API 오류 ({model_name}): {res.status_code} - {res.text}")
+            return title, description
+        else:
+            last_error = f"{model} ({res.status_code}): {res.text}"
+            print(f"⚠️ {model} 호출 실패, 다음 모델로 전환합니다.")
+
+    raise Exception(f"모든 Gemini 모델 호출 실패. 마지막 상세: {last_error}")
 
 def create_gumroad_product(title, description):
     """Gumroad API를 이용한 상품 자동 등록"""
