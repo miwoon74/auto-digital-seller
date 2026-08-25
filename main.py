@@ -97,7 +97,6 @@ def generate_english_product():
     if GEMINI_KEY:
         for model in candidate_models:
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={GEMINI_KEY}"
-            print(f"Calling Gemini API model: {model}")
             try:
                 res = requests.post(url, json=payload, headers=headers, timeout=12)
                 if res.status_code == 200:
@@ -112,8 +111,7 @@ def generate_english_product():
             except Exception as e:
                 print(f"Model {model} failed: {e}")
 
-    # Fallback default template if API key fails or quota exceeded
-    print("⚠️ Gemini API skipped or failed. Falling back to default high-converting copy.")
+    # Fallback high-converting copy
     fallback_title = f"{selected['theme']}"
     fallback_desc = f"""Transform your workflow with this premium {selected['type']}.
 
@@ -134,13 +132,15 @@ def generate_english_product():
 
 def create_gumroad_product(title, description, price, pdf_path):
     if not GUMROAD_TOKEN:
-        raise Exception("GUMROAD_TOKEN environment variable is missing in GitHub Secrets!")
+        raise Exception("GUMROAD_TOKEN environment variable is missing!")
 
     url = "https://api.gumroad.com/v2/products"
+    
+    # Multipart Form 전송을 위한 모든 값의 문자열(str) 명시적 형변환
     data = {
-        "access_token": GUMROAD_TOKEN,
-        "name": title,
-        "price": price,
+        "access_token": str(GUMROAD_TOKEN),
+        "name": str(title),
+        "price": str(price),
         "description": f"{description}\n\n----------\n📄 ACCESS LINK INCLUDED: Download the attached PDF guide to duplicate your digital assets instantly.",
         "published": "true"
     }
