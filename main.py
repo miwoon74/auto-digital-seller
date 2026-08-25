@@ -17,6 +17,26 @@ def send_telegram(message):
         except Exception as e:
             print(f"텔레그램 전송 실패: {e}")
 
+def get_available_gemini_model():
+    """사용 가능한 Gemini 모델 자동 감지"""
+    url = f"https://generativelanguage.googleapis.com/v1beta/models?key={GEMINI_KEY}"
+    res = requests.get(url)
+    if res.status_code == 200:
+        models = res.json().get("models", [])
+        # generateContent를 지원하는 flash 계열 모델 우선 찾기
+        for m in models:
+            methods = m.get("supportedGenerationMethods", [])
+            name = m.get("name", "")
+            if "generateContent" in methods and "flash" in name:
+                return name.replace("models/", "")
+        # flash가 없으면 generateContent가 가능한 아무 gemini 모델 선택
+        for m in models:
+            methods = m.get("supportedGenerationMethods", [])
+            name = m.get("name", "")
+            if "generateContent" in methods and "gemini" in name:
+                return name.replace("models/", "")
+    return "gemini-1.5-flash"  # 기본 예비값
+
 def generate_digital_content():
     """Gemini API로 디지털 상품 내용 생성"""
     today_str = datetime.datetime.now().strftime("%Y-%m-%d")
@@ -29,8 +49,11 @@ def generate_digital_content():
     [DESCRIPTION]: 상품 상세 내용 및 프롬프트 본문 전체
     """
 
-    # 최신 gemini-3.6-flash 모델 적용
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key={GEMINI_KEY}"
+    # 사용 가능한 모델 자동 가져오기
+    model_name = get_available_gemini_model()
+    print(f"선택된 Gemini 모델: {model_name}")
+
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={GEMINI_KEY}"
     headers = {"Content-Type": "application/json"}
     payload = {
         "contents": [{"parts": [{"text": prompt}]}]
@@ -50,7 +73,7 @@ def generate_digital_content():
 
         return title, description
     else:
-        raise Exception(f"Gemini API 오류: {res.status_code} - {res.text}")
+        raise Exception(f"Gemini API 오류 ({model_name}): {res.status_code} - {res.text}")
 
 def create_gumroad_product(title, description):
     """Gumroad API를 이용한 상품 자동 등록"""
