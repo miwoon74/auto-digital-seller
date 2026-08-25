@@ -10,7 +10,7 @@ GUMROAD_TOKEN = os.getenv("GUMROAD_TOKEN")
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
-NOTION_MASTER_LINK = "https://www.notion.so/templates"
+NOTION_MASTER_LINK = "https://alkaline-monkey-cf1.notion.site/365-Day-Social-Media-Content-Calendar-3c797334b87680ddac9bd9fdb14dcc09?source=copy_link"
 CANVA_MASTER_LINK = "https://www.canva.com/brand/join"
 
 PRODUCT_CATALOG = [
