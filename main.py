@@ -13,7 +13,6 @@ TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 NOTION_MASTER_LINK = "https://www.notion.so/templates"
 CANVA_MASTER_LINK = "https://www.canva.com/brand/join"
 
-# 다국어 타깃 10가지 디지털 상품 라인업
 PRODUCT_CATALOG = [
     {
         "type": "Canva Social Media Kit",
@@ -217,7 +216,7 @@ def generate_multilingual_product(item):
     fallback_desc = f"Premium {item['type']} template designed for modern creators."
     return item, fallback_title, fallback_desc
 
-def create_gumroad_product(title, description, price, access_link, cover_url=None, thumbnail_url=None):
+def create_gumroad_product(title, description, price, access_link):
     if not GUMROAD_TOKEN:
         raise Exception("GUMROAD_TOKEN environment variable is missing!")
 
@@ -232,11 +231,6 @@ def create_gumroad_product(title, description, price, access_link, cover_url=Non
         "published": "true"
     }
 
-    if cover_url:
-        data["cover_url"] = cover_url
-    if thumbnail_url:
-        data["thumbnail_url"] = thumbnail_url
-
     res = requests.post(url, data=data, timeout=30)
     res_json = res.json()
 
@@ -247,7 +241,7 @@ def create_gumroad_product(title, description, price, access_link, cover_url=Non
     raise Exception(f"Gumroad API Error ({res.status_code}): {res.text}")
 
 def main():
-    print("🚀 Auto-Seller Starting Multilingual Batch Upload (10 Products)...")
+    print("🚀 Auto-Seller Starting Batch Upload...")
     success_count = 0
 
     for idx, item in enumerate(PRODUCT_CATALOG):
@@ -256,16 +250,27 @@ def main():
             print(f"\n[Product {idx + 1}/10] Language: {item['lang']} - {item['type']}")
             config, title, desc = generate_multilingual_product(item)
 
+            # 이미지 생성 및 온라인 다운로드 링크 생성
             cover_file, thumb_file = create_images(title, config['type'], config['lang'], idx)
             cover_url = upload_image_and_get_url(cover_file)
-            thumbnail_url = upload_image_and_get_url(thumb_file)
+            thumb_url = upload_image_and_get_url(thumb_file)
 
-            product_url = create_gumroad_product(title, desc, config['price'], config['access_link'], cover_url, thumbnail_url)
+            # Gumroad 텍스트 기반 상품 생성
+            product_url = create_gumroad_product(title, desc, config['price'], config['access_link'])
             print(f"✅ Live on Gumroad [{config['lang']}] #{idx + 1}: {product_url}")
             success_count += 1
 
             price_usd = f"${config['price'] / 100:.2f} USD"
-            msg = f"{config['flag']} [Auto-Seller {config['lang'].upper()} #{idx + 1}] NEW PRODUCT!\n\n📌 Title: {title}\n📦 Category: {config['type']}\n💰 Price: {price_usd}\n🔗 Link: {product_url}"
+            
+            # 텔레그램으로 이미지 다운로드 링크 및 상품 관리 링크 원스톱 발송
+            msg = (
+                f"{config['flag']} [Auto-Seller {config['lang'].upper()} #{idx + 1}] NEW PRODUCT!\n\n"
+                f"📌 Title: {title}\n"
+                f"💰 Price: {price_usd}\n"
+                f"🔗 Product: {product_url}\n\n"
+                f"🖼️ Cover Download:\n{cover_url or 'Failed'}\n\n"
+                f"🖼️ Thumbnail Download:\n{thumb_url or 'Failed'}"
+            )
             send_telegram(msg)
 
             time.sleep(2)
@@ -277,7 +282,7 @@ def main():
                 if os.path.exists(f):
                     os.remove(f)
 
-    print(f"\n🎉 Completed! {success_count}/10 Multilingual Products successfully published to Gumroad.")
+    print(f"\n🎉 Completed! {success_count}/10 Multilingual Products successfully published.")
 
 if __name__ == "__main__":
     main()
