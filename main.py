@@ -29,8 +29,8 @@ def generate_digital_content():
     [DESCRIPTION]: 상품 상세 내용 및 프롬프트 본문 전체
     """
 
-    # 최신 gemini-2.0-flash 모델 적용
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={GEMINI_KEY}"
+    # 최신 gemini-3.6-flash 모델 적용
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key={GEMINI_KEY}"
     headers = {"Content-Type": "application/json"}
     payload = {
         "contents": [{"parts": [{"text": prompt}]}]
