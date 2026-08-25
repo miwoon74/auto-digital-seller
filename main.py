@@ -1,10 +1,7 @@
 import os
 import sys
 import requests
-import datetime
 import random
-from reportlab.lib.pagesizes import letter
-from reportlab.pdfgen import canvas
 
 GEMINI_KEY = os.getenv("GEMINI_API_KEY")
 GUMROAD_TOKEN = os.getenv("GUMROAD_TOKEN")
@@ -33,7 +30,7 @@ PRODUCT_CATALOG = [
         "type": "AI Prompt Master Handbook",
         "flag": "🤖",
         "price": 600, # $6.00
-        "access_link": "Included in Attached PDF Guide",
+        "access_link": NOTION_MASTER_LINK,
         "theme": "ChatGPT & Midjourney Business Prompt Handbook for Solopreneurs"
     }
 ]
@@ -45,30 +42,6 @@ def send_telegram(message):
             requests.post(url, data={"chat_id": TELEGRAM_CHAT_ID, "text": message}, timeout=10)
         except Exception as e:
             print(f"Telegram alert warning: {e}")
-
-def create_pdf_guide(filename, title, category_info, content):
-    c = canvas.Canvas(filename, pagesize=letter)
-    c.setFont("Helvetica-Bold", 15)
-    c.drawString(50, 750, title[:55])
-    
-    c.setFont("Helvetica-Bold", 10)
-    c.setFillColorRGB(0.1, 0.3, 0.8)
-    c.drawString(50, 725, f"Access Link / Source: {category_info['access_link']}")
-    
-    c.setStrokeColorRGB(0.8, 0.8, 0.8)
-    c.line(50, 715, 550, 715)
-
-    c.setFillColorRGB(0, 0, 0)
-    c.setFont("Helvetica", 9)
-    text_object = c.beginText(50, 690)
-    
-    clean_content = content.encode('ascii', 'ignore').decode('ascii')
-    lines = clean_content.split('\n')
-    for line in lines[:45]:
-        text_object.textLine(line[:85])
-    
-    c.drawText(text_object)
-    c.save()
 
 def generate_english_product():
     selected = random.choice(PRODUCT_CATALOG)
@@ -82,12 +55,10 @@ def generate_english_product():
     Requirements:
     1. Title: Catchy, professional English product title without dates.
     2. Description: High-converting English sales copy with features, target audience, and call-to-action.
-    3. Guide: English quick-start guide text for the downloadable PDF.
 
     Strict Output Format:
     [TITLE]: English Title
     [DESCRIPTION]: English Description
-    [GUIDE]: English PDF Guide Text
     """
 
     candidate_models = ["gemini-2.5-flash", "gemini-1.5-flash", "gemini-2.0-flash"]
@@ -101,17 +72,15 @@ def generate_english_product():
                 res = requests.post(url, json=payload, headers=headers, timeout=12)
                 if res.status_code == 200:
                     text = res.json()["candidates"][0]["content"]["parts"][0]["text"]
-                    if "[TITLE]:" in text and "[DESCRIPTION]:" in text and "[GUIDE]:" in text:
+                    if "[TITLE]:" in text and "[DESCRIPTION]:" in text:
                         parts = text.split("[DESCRIPTION]:")
                         title = parts[0].replace("[TITLE]:", "").strip()
-                        sub_parts = parts[1].split("[GUIDE]:")
-                        desc = sub_parts[0].strip()
-                        guide = sub_parts[1].strip()
-                        return selected, title, desc, guide
+                        desc = parts[1].strip()
+                        return selected, title, desc
             except Exception as e:
                 print(f"Model {model} failed: {e}")
 
-    # Fallback high-converting copy
+    # Fallback default copy
     fallback_title = f"{selected['theme']}"
     fallback_desc = f"""Transform your workflow with this premium {selected['type']}.
 
@@ -120,50 +89,45 @@ def generate_english_product():
 - Designed specifically for modern creators and entrepreneurs
 - Saves you 10+ hours of setup and design time
 
-📦 WHAT IS INCLUDED:
-- Direct access link to original template
-- Full quick-start setup PDF guide
-- Lifetime updates & community access
-
 👉 Get instant access today and level up your business!"""
-    fallback_guide = f"Welcome to {fallback_title}!\n\n1. Open your access link: {selected['access_link']}\n2. Duplicate/Save the resource into your own account.\n3. Customize according to your needs."
 
-    return selected, fallback_title, fallback_desc, fallback_guide
+    return selected, fallback_title, fallback_desc
 
-def create_gumroad_product(title, description, price, pdf_path):
+def create_gumroad_product(title, description, price, access_link):
     if not GUMROAD_TOKEN:
         raise Exception("GUMROAD_TOKEN environment variable is missing!")
 
     url = "https://api.gumroad.com/v2/products"
     
-    # Multipart Form 전송을 위한 모든 값의 문자열(str) 명시적 형변환
+    full_description = f"{description}\n\n----------\n🔗 INSTANT ACCESS LINK:\n{access_link}"
+
     data = {
         "access_token": str(GUMROAD_TOKEN),
         "name": str(title),
         "price": str(price),
-        "description": f"{description}\n\n----------\n📄 ACCESS LINK INCLUDED: Download the attached PDF guide to duplicate your digital assets instantly.",
+        "description": str(full_description),
         "published": "true"
     }
 
-    with open(pdf_path, "rb") as pdf_f:
-        files = {"file": (pdf_path, pdf_f, "application/pdf")}
-        res = requests.post(url, data=data, files=files, timeout=30)
+    # Pure form-encoded request without files payload
+    res = requests.post(url, data=data, timeout=30)
+    res_json = res.json()
 
-    if res.status_code in [200, 201]:
-        p_data = res.json().get("product", {})
-        return p_data.get("url") or p_data.get("short_url") or "https://gumroad.com/products"
-    else:
-        raise Exception(f"Gumroad API Error ({res.status_code}): {res.text}")
+    if res.status_code in [200, 201] and res_json.get("success"):
+        p_data = res_json.get("product", {})
+        product_url = p_data.get("short_url") or p_data.get("url")
+        if product_url:
+            return product_url
+
+    raise Exception(f"Gumroad API Error ({res.status_code}): {res.text}")
 
 def main():
     print("🚀 Auto-Seller Starting...")
-    pdf_file = "Digital_Asset_Guide.pdf"
     try:
-        config, title, desc, guide = generate_english_product()
+        config, title, desc = generate_english_product()
         print(f"Generated: {title}")
 
-        create_pdf_guide(pdf_file, title, config, guide)
-        product_url = create_gumroad_product(title, desc, config['price'], pdf_file)
+        product_url = create_gumroad_product(title, desc, config['price'], config['access_link'])
         print(f"✅ Live on Gumroad: {product_url}")
 
         price_usd = f"${config['price'] / 100:.2f} USD"
@@ -175,9 +139,6 @@ def main():
         print(error_msg)
         send_telegram(error_msg)
         sys.exit(1)
-    finally:
-        if os.path.exists(pdf_file):
-            os.remove(pdf_file)
 
 if __name__ == "__main__":
     main()
