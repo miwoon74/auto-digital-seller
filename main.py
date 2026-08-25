@@ -10,7 +10,6 @@ GUMROAD_TOKEN = os.getenv("GUMROAD_TOKEN")
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
-# 기본 템플릿 링크 설정 (본인의 노션/캔바 공유 링크로 자유롭게 교체)
 NOTION_MASTER_LINK = "https://www.notion.so/templates"
 CANVA_MASTER_LINK = "https://www.canva.com/brand/join"
 
@@ -21,7 +20,7 @@ PRODUCT_CATALOG = [
         "flag": "🎨",
         "lang": "English",
         "region": "Global US/EU",
-        "price": 700,  # $7.00
+        "price": 700,
         "access_link": CANVA_MASTER_LINK,
         "theme": "Aesthetic Instagram Carousel & Story Canva Templates for Business Owners"
     },
@@ -30,7 +29,7 @@ PRODUCT_CATALOG = [
         "flag": "🇰🇷",
         "lang": "Korean with K-Aesthetic",
         "region": "Global K-Culture",
-        "price": 500,  # $5.00
+        "price": 500,
         "access_link": CANVA_MASTER_LINK,
         "theme": "K-Aesthetic Minimalist E-Book & Workbook Canva Template"
     },
@@ -39,7 +38,7 @@ PRODUCT_CATALOG = [
         "flag": "🇺🇸",
         "lang": "English",
         "region": "North America",
-        "price": 900,  # $9.00
+        "price": 900,
         "access_link": NOTION_MASTER_LINK,
         "theme": "Aesthetic All-in-One Life OS & Weekly Productivity Tracker"
     },
@@ -48,7 +47,7 @@ PRODUCT_CATALOG = [
         "flag": "🇯🇵",
         "lang": "Japanese",
         "region": "Japan",
-        "price": 500,  # $5.00
+        "price": 500,
         "access_link": NOTION_MASTER_LINK,
         "theme": "Minimalist Zen Habit & Routine Focus Tracker"
     },
@@ -57,7 +56,7 @@ PRODUCT_CATALOG = [
         "flag": "📄",
         "lang": "Spanish",
         "region": "Latin America / Spain",
-        "price": 400,  # $4.00
+        "price": 400,
         "access_link": "Direct PDF Download Included",
         "theme": "Planificador Diario A4 Minimalista e Imprimible"
     },
@@ -66,14 +65,13 @@ PRODUCT_CATALOG = [
         "flag": "🤖",
         "lang": "English",
         "region": "Global",
-        "price": 600,  # $6.00
+        "price": 600,
         "access_link": "Included in Attached PDF Guide",
         "theme": "ChatGPT & Midjourney Business Prompt Handbook for Solopreneurs"
     }
 ]
 
 def send_telegram(message):
-    """텔레그램 알림 전송"""
     if TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID:
         url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
         try:
@@ -82,10 +80,8 @@ def send_telegram(message):
             print(f"Telegram alert error: {e}")
 
 def create_pdf_guide(filename, title, category_info, content):
-    """PDF 가이드북 자동 생성 (링크 및 사용법 포함)"""
     c = canvas.Canvas(filename, pagesize=letter)
     
-    # 헤더
     c.setFont("Helvetica-Bold", 15)
     c.drawString(50, 750, title[:55])
     
@@ -96,7 +92,6 @@ def create_pdf_guide(filename, title, category_info, content):
     c.setStrokeColorRGB(0.8, 0.8, 0.8)
     c.line(50, 715, 550, 715)
 
-    # 본문 (인코딩 깨짐 방지 안전 처리)
     c.setFillColorRGB(0, 0, 0)
     c.setFont("Helvetica", 9)
     text_object = c.beginText(50, 690)
@@ -109,8 +104,26 @@ def create_pdf_guide(filename, title, category_info, content):
     c.drawText(text_object)
     c.save()
 
+def get_candidate_models():
+    """최신 Gemini 모델 및 사용 가능 목록 탐색"""
+    models = ["gemini-3.6-flash", "gemini-2.5-flash"]
+    try:
+        url = f"https://generativelanguage.googleapis.com/v1beta/models?key={GEMINI_KEY}"
+        res = requests.get(url, timeout=5)
+        if res.status_code == 200:
+            fetched = [
+                m.get("name", "").replace("models/", "")
+                for m in res.json().get("models", [])
+                if "generateContent" in m.get("supportedGenerationMethods", [])
+            ]
+            for m in reversed(fetched):
+                if m not in models:
+                    models.insert(0, m)
+    except Exception as e:
+        print(f"모델 목록 조회 건너뜀: {e}")
+    return models
+
 def generate_digital_product():
-    """모든 상품 카테고리 중 무작위 선택하여 Gemini 콘텐츠 생성"""
     today_str = datetime.datetime.now().strftime("%Y-%m-%d")
     selected = random.choice(PRODUCT_CATALOG)
 
@@ -133,14 +146,18 @@ def generate_digital_product():
     [GUIDE]: PDF Quick Start Guide Text (in English)
     """
 
-    candidate_models = ["gemini-1.5-flash", "gemini-2.0-flash", "gemini-1.5-pro"]
+    candidate_models = get_candidate_models()
     payload = {"contents": [{"parts": [{"text": prompt}]}]}
     headers = {"Content-Type": "application/json"}
+    last_error = ""
 
     for model in candidate_models:
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={GEMINI_KEY}"
+        print(f"Gemini API 호출 시도: {model}")
         res = requests.post(url, json=payload, headers=headers)
+        
         if res.status_code == 200:
+            print(f"✅ 모델 호출 성공: {model}")
             text = res.json()["candidates"][0]["content"]["parts"][0]["text"]
             
             title = f"{selected['theme']} ({today_str})"
@@ -155,11 +172,13 @@ def generate_digital_product():
                 guide = sub_parts[1].strip()
 
             return selected, title, desc, guide
+        else:
+            last_error = f"{model} ({res.status_code}): {res.text}"
+            print(f"⚠️ {model} 실패: {res.status_code}")
 
-    raise Exception("Gemini API content generation failed.")
+    raise Exception(f"Gemini API 생성 실패. 상세: {last_error}")
 
 def create_gumroad_product_with_file(title, description, price, pdf_path):
-    """Gumroad에 상품 정보 및 PDF 파일 첨부 등록"""
     url = "https://api.gumroad.com/v2/products"
     
     data = {
@@ -181,19 +200,15 @@ def create_gumroad_product_with_file(title, description, price, pdf_path):
 def main():
     print("🚀 All-in-One Global Digital Product Generator Starting...")
     try:
-        # 1. 다각화된 상품 무작위 생성
         cat, title, desc, guide = generate_digital_product()
         print(f"Generated ({cat['flag']} {cat['type']}): {title}")
 
-        # 2. 다운로드용 PDF 가이드북 생성
         pdf_filename = "Digital_Product_Guide.pdf"
         create_pdf_guide(pdf_filename, title, cat, guide)
 
-        # 3. Gumroad 자동 업로드 및 등록
         product_url = create_gumroad_product_with_file(title, desc, cat['price'], pdf_filename)
         print(f"Live on Gumroad: {product_url}")
 
-        # 4. 텔레그램 알림 수신
         price_usd = f"${cat['price'] / 100:.2f} USD"
         msg = f"{cat['flag']} [Auto-Seller Global] New Product Listed!\n\n📌 Title: {title}\n📦 Category: {cat['type']}\n🌍 Target: {cat['region']}\n💰 Price: {price_usd}\n🔗 Link: {product_url}"
         send_telegram(msg)
